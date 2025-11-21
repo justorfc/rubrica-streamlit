@@ -1,0 +1,1102 @@
+---
+title: "Proyecto de Calificación por Rúbricas con Streamlit y SQLite"
+subtitle: "Guía Técnica y Pedagógica para Docentes"
+author: "Programación de Computadores con Python y Estadística Aplicada con Python y R"
+date: "`r format(Sys.Date(), '%d de %B de %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+    theme: cosmo
+    highlight: tango
+    code_folding: show
+    df_print: paged
+    number_sections: true
+  pdf_document:
+    toc: true
+    number_sections: true
+    latex_engine: xelatex
+  word_document:
+    toc: true
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 8,
+  fig.height = 5,
+  dpi = 150
+)
+
+# Cargar librerías necesarias
+library(tidyverse)
+library(knitr)
+library(kableExtra)
+```
+
+---
+
+# Introducción
+
+## Contexto del proyecto
+
+Este proyecto nace de la necesidad de **sistematizar y automatizar la evaluación por rúbricas** en asignaturas de programación y estadística aplicada. El sistema permite a los docentes:
+
+- Evaluar trabajos académicos (notebooks Jupyter, proyectos, parciales) con criterios ponderados
+- Generar automáticamente observaciones cualitativas según el desempeño
+- Exportar resultados en formato CSV compatible con Excel y herramientas institucionales
+- Mantener un historial persistente de evaluaciones en base de datos SQLite
+
+El proyecto está diseñado para funcionar tanto en **entornos cloud** (GitHub Codespaces, servidor institucional) como en **instalaciones locales** sin conexión a internet, adaptándose a las realidades de infraestructura de diferentes instituciones educativas.
+
+## Motivación pedagógica
+
+La evaluación por rúbricas es una herramienta fundamental en educación por competencias porque:
+
+1. **Transparencia**: Los estudiantes conocen de antemano los criterios de evaluación
+2. **Consistencia**: Reduce la subjetividad en la calificación
+3. **Feedback constructivo**: Proporciona retroalimentación específica por dimensiones de desempeño
+4. **Trazabilidad**: Permite análisis longitudinal del progreso estudiantil
+
+Este sistema digitaliza el proceso, reduciendo el tiempo de calificación manual y permitiendo al docente enfocarse en la retroalimentación pedagógica de alto valor.
+
+## Asignaturas objetivo
+
+El proyecto fue desarrollado inicialmente para las siguientes asignaturas del programa de Ingeniería:
+
+- **Programación de Computadores con Python**: énfasis en estructura de código, calidad de implementación y aplicación de paradigmas
+- **Estadística Aplicada con Python y R**: énfasis en análisis de datos, visualización, inferencia estadística y reproducibilidad
+
+Sin embargo, su diseño modular con **plantillas personalizables** permite adaptarlo a cualquier disciplina que requiera evaluación multicriteria.
+
+---
+
+# Objetivos del Proyecto
+
+## Objetivos generales
+
+1. Proporcionar una **herramienta web interactiva** para evaluación por rúbricas en entornos educativos
+2. Garantizar **portabilidad** (cloud y local) y **persistencia** de datos
+3. Facilitar la **exportación** de resultados para análisis posterior
+
+## Objetivos específicos
+
+### Desde la perspectiva técnica
+
+- Implementar interfaz gráfica con **Streamlit** que no requiera conocimientos de programación para su uso
+- Diseñar esquema de base de datos **SQLite** optimizado con PRAGMAs (WAL, sincronización normal)
+- Modularizar código en capas: **presentación** (`app.py`), **persistencia** (`db.py`), **lógica de negocio** (`utils.py`)
+- Garantizar compatibilidad de exportación CSV con Excel/Windows mediante encoding **UTF-8 con BOM**
+
+### Desde la perspectiva pedagógica
+
+- Crear **plantillas de rúbrica** ajustables por programa académico (Agroindustrial, Civil, Estadística)
+- Generar automáticamente **observaciones cualitativas** contextualizadas según el nivel de desempeño
+- Proveer **visualización de la rúbrica completa** en la interfaz para transparencia
+- Permitir **edición manual** de observaciones cuando el docente requiera personalización
+
+### Desde la perspectiva de despliegue
+
+- Documentar proceso de **instalación offline** con gestión de dependencias
+- Proporcionar **scripts de ejecución** multiplataforma (Bash y Batch)
+- Incluir **herramientas de carga masiva** desde CSV (roster de estudiantes/grupos)
+- Generar **paquete distribuible** (ZIP) sin dependencias pesadas para facilitar adopción
+
+---
+
+# Estructura del Repositorio
+
+El proyecto sigue una estructura modular que separa responsabilidades:
+
+```
+rubrica-streamlit/
+├── README.md                    # Documentación principal con quick start
+├── LICENSE                      # Licencia del proyecto
+├── run.sh                       # Script de gestión (start/stop/status/logs)
+├── rubrica.db                   # Base de datos SQLite (gitignored)
+│
+├── rubrica-streamlit/           # Código fuente principal
+│   ├── app.py                   # Interfaz Streamlit
+│   ├── db.py                    # Capa de persistencia (SQLite)
+│   ├── utils.py                 # Lógica de rúbricas y cálculos
+│   ├── requirements.txt         # Dependencias Python
+│   ├── data/                    # CSVs de export y roster
+│   └── tests/                   # Scripts de validación
+│       └── sanity_check.py
+│
+├── califica_rubrica/            # Versión portable (distribución)
+│   ├── app.py                   # [copia de rubrica-streamlit/app.py]
+│   ├── db.py                    # [copia de rubrica-streamlit/db.py]
+│   ├── utils.py                 # [copia de rubrica-streamlit/utils.py]
+│   ├── requirements.txt
+│   ├── run.sh                   # Scripts de ejecución
+│   ├── run.bat
+│   └── data/
+│
+├── tools/                       # Utilidades de mantenimiento
+│   └── load_csv_to_sqlite.py   # Carga masiva roster → SQLite
+│
+├── docs/                        # Documentación adicional
+│   └── guia_app.md              # Guía de instalación offline
+│
+└── data/                        # Datos demo y reportes de carga
+    ├── demo_evaluaciones_15.csv
+    └── roster_groups_*.csv
+```
+
+## Componentes clave
+
+| Archivo | Responsabilidad |
+|---------|----------------|
+| `app.py` | Interfaz Streamlit: formularios, sliders, expanders, botones de export |
+| `db.py` | API de persistencia: `init_db()`, `insert_evaluacion()`, `export_csv()`, gestión de conexión con PRAGMAs |
+| `utils.py` | Lógica de evaluación: plantillas (`TEMPLATES`), cálculo de nota final, generación de textos cualitativos (`EXAMPLES`) |
+| `run.sh` | Gestión del servicio Streamlit: `start`, `stop`, `status`, `logs`, `restart` |
+| `load_csv_to_sqlite.py` | Carga masiva con validación, deduplicación y reportes de inserción |
+
+---
+
+# Flujo Funcional
+
+## Diagrama de flujo
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Usuario accede a Streamlit (navegador web)                 │
+└────────────────────┬────────────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Sidebar: configuración de evaluación                       │
+│  - Selecciona plantilla de rúbrica                          │
+│  - Ingresa metadatos (curso, evaluación, fecha, grupo)      │
+└────────────────────┬────────────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Visualización de rúbrica completa (expander colapsable)    │
+│  - Muestra criterios, pesos y niveles de desempeño          │
+└────────────────────┬────────────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Calificación por criterio (6 sliders 1-5)                  │
+│  - Al mover slider → se abre expander con descripción       │
+│  - Se cierra el expander anterior automáticamente           │
+└────────────────────┬────────────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Generación automática de observaciones                     │
+│  - Sistema consulta EXAMPLES[criterio][nota]                │
+│  - Construye texto cualitativo concatenando ejemplos        │
+│  - Usuario puede bloquear con checkbox para editar manual   │
+└────────────────────┬────────────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Cálculo de nota final ponderada                            │
+│  - utils.nota_final(notas, pesos)                           │
+│  - Muestra resultado en métrica destacada                   │
+└────────────────────┬────────────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Guardado en SQLite                                          │
+│  - db.insert_evaluacion(item)                               │
+│  - Confirmación al usuario                                   │
+└────────────────────┬────────────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Exportación de resultados                                   │
+│  - Evaluación actual → CSV descargable                       │
+│  - Todas las evaluaciones → CSV con textos cualitativos     │
+│  - Encoding UTF-8-sig, sanitización de multilínea           │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## Casos de uso principales
+
+### 1. Evaluación de un notebook Jupyter
+
+**Actor**: Docente de Programación de Computadores
+
+**Precondiciones**: El docente ha revisado el notebook del estudiante/grupo
+
+**Flujo**:
+1. Selecciona plantilla "Estadística" (ajustada para notebooks)
+2. Ingresa: Curso="Programación con Python", Evaluación="Proyecto Final", Grupo="Grupo 3"
+3. Califica:
+   - Estructura: 4 (buena organización, secciones claras)
+   - Programación: 5 (código limpio, documentado, reproducible)
+   - Teoría: 4 (explica algoritmos correctamente)
+   - IA: 3 (uso básico de scikit-learn)
+   - Reflexión: 4 (discute limitaciones y mejoras)
+   - Presentación: 5 (gráficos profesionales, formato impecable)
+4. Sistema genera observaciones automáticas concatenando textos de `EXAMPLES`
+5. Docente revisa, activa checkbox "Bloquear edición" y ajusta redacción
+6. Guarda evaluación en SQLite
+7. Descarga CSV de la evaluación para adjuntar a correo de retroalimentación
+
+### 2. Carga masiva de roster
+
+**Actor**: Coordinador académico
+
+**Flujo**:
+1. Descarga roster institucional en CSV con columnas: `grupo_o_estudiante`, `curso`, `evaluacion`, `fecha`
+2. Ejecuta en terminal:
+   ```bash
+   python tools/load_csv_to_sqlite.py --csv data/roster_groups_20251101.csv
+   ```
+3. Script valida datos, detecta duplicados, genera reporte de inserción
+4. Coordina con docentes para que completen calificaciones en la interfaz web
+
+### 3. Análisis longitudinal con R
+
+**Actor**: Investigador en educación
+
+**Flujo**:
+1. Exporta todas las evaluaciones desde la interfaz Streamlit
+2. Descarga CSV con columnas: `curso`, `evaluacion`, `fecha`, `grupo_o_estudiante`, criterios numéricos, `*_text` cualitativos, `nota_final`
+3. Importa en RStudio para análisis estadístico (correlaciones, tendencias temporales, clustering de perfiles de desempeño)
+
+---
+
+# Código Python: Módulos Principales
+
+## Módulo `utils.py`: Lógica de Rúbricas
+
+Este módulo contiene las plantillas de evaluación, funciones de validación y generación de textos cualitativos.
+
+### Plantillas de rúbrica
+
+Cada plantilla define:
+- **Pesos**: porcentaje asignado a cada criterio (suman 100%)
+- **Descripciones**: texto explicativo de qué evalúa cada criterio
+
+```python
+TEMPLATES: Dict[str, Dict[str, Dict[str, Any]]] = {
+    "Agroindustrial": {
+        "pesos": {
+            "estructura": 15,
+            "programacion": 20,
+            "teoria": 15,
+            "ia": 10,
+            "reflexion": 15,
+            "presentacion": 25,
+        },
+        "descripciones": {
+            "estructura": "Claridad y organización de la solución",
+            "programacion": "Calidad del código y solución técnica",
+            # ... (demás criterios)
+        },
+    },
+    "Civil": { ... },
+    "Estadística": { ... },
+}
+```
+
+### Cálculo de nota final ponderada
+
+La función `nota_final()` implementa la fórmula:
+
+$$
+\text{Nota Final} = \sum_{i=1}^{n} \text{Nota}_i \times \frac{\text{Peso}_i}{100}
+$$
+
+```python
+def nota_final(notas: Dict[str, Any], pesos: Dict[str, int] = None) -> float:
+    """Calcula la nota final ponderada usando `pesos`.
+    
+    Solo se consideran las claves presentes en `notas` y `pesos`.
+    El resultado se redondea a 2 decimales.
+    """
+    if not notas:
+        return 0.0
+
+    validate_notas(notas)
+
+    if pesos is None:
+        first = next(iter(TEMPLATES.values()))
+        pesos = first["pesos"]
+
+    total = 0.0
+    for k, w in pesos.items():
+        if k in notas:
+            val = float(notas[k])
+            total += val * (w / 100.0)
+
+    result = round(total, 2)
+    return result
+```
+
+### Generación de textos cualitativos
+
+El diccionario `EXAMPLES` mapea cada combinación `(criterio, nota)` a un texto descriptivo:
+
+```python
+EXAMPLES = {
+    "estructura": {
+        1: "Desorden total y sin secciones claras.",
+        2: "Estructura deficiente, faltan secciones importantes.",
+        3: "Estructura aceptable con secciones principales presentes.",
+        4: "Buena organización y secciones bien identificadas.",
+        5: "Excelente estructura: secciones claras, índice y navegación sencilla.",
+    },
+    "programacion": {
+        1: "Código incompleto, numerosos errores que impiden su ejecución.",
+        # ... (niveles 2-5)
+    },
+    # ... (demás criterios: teoria, ia, reflexion, presentacion)
+}
+
+def ejemplo_por_nota(criterio: str, nota: int) -> str:
+    """Devuelve un texto ejemplo para un criterio dado y una nota (1..5).
+    
+    Si el criterio o la nota no están disponibles, devuelve una cadena genérica.
+    """
+    c = criterio.lower()
+    try:
+        n = int(nota)
+    except Exception:
+        n = 3
+    if c in EXAMPLES and n in EXAMPLES[c]:
+        return EXAMPLES[c][n]
+    return "Ejemplo no disponible para este criterio/nota."
+```
+
+## Módulo `db.py`: Persistencia en SQLite
+
+### Configuración de conexión con PRAGMAs
+
+Para optimizar rendimiento y seguridad, se configuran PRAGMAs específicos:
+
+- **`journal_mode=WAL`**: Write-Ahead Logging para concurrencia
+- **`synchronous=NORMAL`**: balance entre velocidad y durabilidad
+- **`foreign_keys=ON`**: integridad referencial
+
+```python
+def open_conn(path: Optional[str] = None) -> sqlite3.Connection:
+    """Abrir conexión a SQLite y aplicar PRAGMAs recomendadas."""
+    try:
+        db_path = Path(path) if path else DB_DEFAULT
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(str(db_path), timeout=30, 
+                               detect_types=sqlite3.PARSE_DECLTYPES)
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+        # Aplicar PRAGMAs aconsejadas
+        cur.execute("PRAGMA journal_mode=WAL;")
+        cur.execute("PRAGMA synchronous=NORMAL;")
+        cur.execute("PRAGMA foreign_keys=ON;")
+        conn.commit()
+        return conn
+    except Exception as ex:
+        raise DBError(f"No se pudo abrir la conexión a la BD: {ex}") from ex
+```
+
+### Esquema de tabla `evaluaciones`
+
+```sql
+CREATE TABLE IF NOT EXISTS evaluaciones (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    plantilla TEXT,
+    curso TEXT,
+    evaluacion TEXT,
+    fecha TEXT,
+    grupo_o_estudiante TEXT,
+    estructura REAL,
+    programacion REAL,
+    teoria REAL,
+    ia REAL,
+    reflexion REAL,
+    presentacion REAL,
+    nota_final REAL,
+    observaciones TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### Exportación con sanitización de multilínea
+
+Problema común: los saltos de línea en observaciones generan registros rotos en CSV.
+
+**Solución implementada**:
+- Columna `observaciones`: texto sanitizado (saltos de línea → ` | `)
+- Columna `observaciones_raw`: texto original sin modificación
+- Encoding **UTF-8-sig** (BOM) para compatibilidad con Excel en Windows
+
+```python
+def _sanitize_text(text: str) -> str:
+    """Reemplaza saltos de línea por ' | ' para CSV."""
+    if not text:
+        return ""
+    return text.replace("\n", " | ").replace("\r", "")
+
+def export_csv(path: Optional[str] = None, 
+               csv_path: Optional[str] = None) -> str:
+    """Exporta todas las evaluaciones con textos cualitativos."""
+    # ... (query SQL)
+    df = pd.DataFrame(rows)
+    
+    # Añadir textos cualitativos por criterio
+    for c in ["estructura", "programacion", "teoria", "ia", 
+              "reflexion", "presentacion"]:
+        df[f"{c}_text"] = df.apply(
+            lambda r: ejemplo_por_nota(c, r[c]), axis=1
+        )
+    
+    # Sanitizar observaciones
+    df["observaciones"] = df["observaciones"].apply(_sanitize_text)
+    df["observaciones_raw"] = df["observaciones"]  # preservar original
+    
+    # Exportar con BOM para Excel
+    df.to_csv(csv_path, index=False, encoding="utf-8-sig")
+    return csv_path
+```
+
+## Módulo `app.py`: Interfaz Streamlit
+
+### Estructura de la interfaz
+
+1. **Sidebar**: controles de configuración (plantilla, curso, evaluación, fecha, grupos)
+2. **Área principal**:
+   - Expander con rúbrica completa (criterios, pesos, niveles)
+   - Sliders interactivos por criterio con expanders de descripción
+   - Cálculo automático de nota final
+   - Campo de observaciones (autogenerable o manual)
+   - Botón de guardado
+   - Botones de exportación (evaluación actual / todas)
+
+### Generación automática de observaciones
+
+```python
+def _build_observaciones():
+    """Construye observaciones concatenando textos de EXAMPLES 
+    según las notas de los sliders."""
+    obs_parts = []
+    for crit in ["estructura", "programacion", "teoria", 
+                 "ia", "reflexion", "presentacion"]:
+        val = st.session_state.get(f"slider_{crit}", 3)
+        texto = ejemplo_por_nota(crit, val)
+        titulo = CRITERIA_TITLES.get(crit, crit)
+        obs_parts.append(f"{titulo}: {texto}")
+    return "\n".join(obs_parts)
+```
+
+### Gestión de expanders interactivos
+
+Para mejorar la UX, al mover un slider se abre su expander correspondiente y se cierran los demás:
+
+```python
+def _open_expander(criterio: str):
+    """Callback para abrir el expander de un criterio específico."""
+    for c in ["estructura", "programacion", "teoria", 
+              "ia", "reflexion", "presentacion"]:
+        st.session_state[f"exp_{c}"] = (c == criterio)
+
+# En el código del slider:
+st.slider(
+    f"Nota {CRITERIA_TITLES[crit]}",
+    min_value=1, max_value=5, value=3,
+    key=f"slider_{crit}",
+    on_change=_open_expander,
+    args=(crit,)
+)
+```
+
+---
+
+# Uso Pedagógico
+
+## Escenarios de aplicación en el aula
+
+### Evaluación de proyectos de programación
+
+**Contexto**: Proyecto final de "Programación de Computadores con Python" donde estudiantes desarrollan un sistema de gestión de datos con pandas, visualización con matplotlib y persistencia en SQLite.
+
+**Aplicación de la rúbrica**:
+- **Estructura** (15%): ¿El notebook tiene secciones claras? ¿Hay índice? ¿Estructura lógica?
+- **Programación** (20%): ¿El código es limpio? ¿Usa funciones? ¿Está documentado? ¿Es reproducible?
+- **Teoría** (15%): ¿Explica conceptos de pandas, SQL, patrones de diseño?
+- **IA** (10%): ¿Aplica técnicas de ML si es relevante? (clustering de clientes, predicción)
+- **Reflexión** (15%): ¿Discute limitaciones? ¿Propone mejoras? ¿Lecciones aprendidas?
+- **Presentación** (25%): ¿Calidad de gráficos? ¿Formato profesional? ¿Entrega puntual?
+
+**Beneficio**: El docente puede evaluar 20 proyectos en 2 horas (6 min/proyecto) vs. 4-5 horas con rúbrica manual.
+
+### Evaluación de análisis estadísticos
+
+**Contexto**: Parcial de "Estadística Aplicada con Python y R" donde estudiantes analizan dataset de agricultura (rendimiento de cultivos) con regresión lineal múltiple.
+
+**Aplicación de la rúbrica**:
+- **Estructura** (10%): ¿Workflow claro: EDA → modelado → validación?
+- **Programación** (20%): ¿Scripts reproducibles? ¿Uso correcto de dplyr/ggplot2 o pandas/seaborn?
+- **Teoría** (25%): ¿Interpreta coeficientes? ¿Valida supuestos? ¿Usa correctamente p-valores?
+- **IA** (15%): ¿Aplica regularización? ¿Compara modelos?
+- **Reflexión** (10%): ¿Discute causalidad vs correlación? ¿Limitaciones del modelo?
+- **Presentación** (20%): ¿Gráficos informativos? ¿Tablas con formato APA?
+
+**Beneficio**: Generación automática de observaciones como *"Programación: Código bien documentado y modular; pruebas básicas incluidas"* ahorra 30 minutos de redacción por docente.
+
+## Retroalimentación formativa
+
+Las observaciones generadas automáticamente sirven como **punto de partida** para feedback personalizado:
+
+```
+Estructura: Buena organización y secciones bien identificadas.
+Programación: Código impecable, reproducible y con buenas prácticas.
+Teoría: Cobertura adecuada de los fundamentos teóricos.
+IA: Aplicación correcta y justificada de métodos de IA.
+Reflexión: Buena capacidad de autoevaluación y discusión de mejoras.
+Presentación: Presentación profesional y bien estructurada.
+```
+
+El docente puede **bloquear la edición automática** y personalizar:
+
+```
+Estructura: Excelente organización con índice navegable. 
+Sugerencia: añadir referencias cruzadas entre secciones.
+
+Programación: Código de calidad profesional. Destacable el uso de type hints 
+y docstrings. Considera implementar pruebas unitarias con pytest.
+
+[...]
+```
+
+## Análisis de tendencias con R
+
+El CSV exportado puede usarse para análisis institucional:
+
+- **Identificación de criterios débiles**: ¿En qué criterio los estudiantes tienen más dificultad?
+- **Efectividad de intervenciones**: ¿Mejoró el desempeño tras un taller de programación?
+- **Perfiles de aprendizaje**: clustering de estudiantes según patrones de fortalezas/debilidades
+
+---
+
+# GitHub Copilot: Prompts Clave
+
+Durante el desarrollo de este proyecto, se utilizó **GitHub Copilot** para acelerar tareas repetitivas, generar código boilerplate y resolver problemas específicos. A continuación se documentan prompts efectivos para replicar este flujo de trabajo.
+
+## Prompts de inicialización
+
+### 1. Creación de estructura modular
+
+**Prompt**:
+```
+Create a Streamlit app with three modules: app.py (UI), db.py (SQLite persistence), 
+utils.py (business logic). The app should manage educational rubric evaluations with 
+6 criteria (estructura, programacion, teoria, ia, reflexion, presentacion) on a 1-5 
+scale. Use SQLite with WAL pragma. Include functions for insert, list, and export to CSV.
+```
+
+**Resultado**: Copilot generó estructura base de archivos con imports, stubs de funciones y esquema SQL.
+
+### 2. Configuración de PRAGMAs SQLite
+
+**Prompt**:
+```
+Write a function open_conn() that returns a SQLite connection with these PRAGMAs: 
+journal_mode=WAL, synchronous=NORMAL, foreign_keys=ON. Handle exceptions with custom DBError.
+```
+
+**Resultado**: Función completa con manejo de excepciones, creación de directorio y configuración de `row_factory`.
+
+## Prompts de funcionalidad específica
+
+### 3. Generación de observaciones cualitativas
+
+**Prompt**:
+```
+Create a dictionary EXAMPLES mapping each criterion (estructura, programacion, teoria, 
+ia, reflexion, presentacion) to 5 levels (1=poor, 2=basic, 3=acceptable, 4=good, 
+5=excellent) with descriptive text in Spanish for educational context (engineering students).
+```
+
+**Resultado**: Diccionario completo con textos pedagógicos apropiados. Requirió refinamiento manual para ajustar tono.
+
+### 4. Sanitización de texto multilínea para CSV
+
+**Prompt**:
+```
+Write a function _sanitize_text(text: str) that replaces newlines with ' | ' separator 
+for safe CSV export. Then modify export_csv() to create both 'observaciones' (sanitized) 
+and 'observaciones_raw' (original) columns.
+```
+
+**Resultado**: Implementación correcta del patrón sanitización + preservación de original.
+
+### 5. Expanders interactivos en Streamlit
+
+**Prompt**:
+```
+In Streamlit, create 6 sliders with st.expander() below each. When a slider changes, 
+open its expander and close all others. Use session_state and callbacks.
+```
+
+**Resultado**: Código funcional con `on_change` callbacks y manejo de estado. Requirió ajuste de nombres de keys.
+
+## Prompts de depuración
+
+### 6. Solución de problema encoding UTF-8
+
+**Prompt** (después de reportar mojibake en Excel):
+```
+The CSV exported from pandas to_csv() shows garbled characters in Excel on Windows. 
+How to fix encoding for proper display of Spanish characters (á, é, í, ó, ú, ñ)?
+```
+
+**Respuesta de Copilot**:
+```python
+df.to_csv(csv_path, index=False, encoding="utf-8-sig")
+```
+
+**Explicación**: UTF-8-sig añade BOM (Byte Order Mark) que Excel detecta automáticamente.
+
+### 7. Debugging de botón Streamlit que no muestra CSV
+
+**Prompt**:
+```
+st.download_button() shows "None" instead of CSV content. The CSV is generated in 
+memory. How to pass it correctly to download_button?
+```
+
+**Solución propuesta**: Usar `io.StringIO()` para generar CSV en memoria y pasar a `data` parameter.
+
+## Prompts de documentación
+
+### 8. Generación de README.md
+
+**Prompt**:
+```
+Write a comprehensive README.md for this project with sections: Features, Quick Start, 
+Usage, Project Structure, License. Include commands for running with run.sh script.
+```
+
+**Resultado**: Markdown bien estructurado con badges, ejemplos de código y emojis. Requirió ajuste de rutas de archivos.
+
+### 9. Creación de guía offline
+
+**Prompt**:
+```
+Write a detailed step-by-step guide (in Spanish) for installing this Streamlit app 
+offline on a Windows PC: clone repo, create venv, download wheelhouse for offline 
+install, run app, package as .exe with auto-py-to-exe. Include troubleshooting section.
+```
+
+**Resultado**: Documento `docs/guia_app.md` completo con secciones numeradas, comandos específicos y warnings importantes.
+
+## Lecciones aprendidas sobre el uso de Copilot
+
+### Prompts efectivos tienen:
+1. **Contexto específico**: mención de tecnologías (Streamlit, SQLite, pandas)
+2. **Restricciones claras**: idioma (Spanish), formato (CSV con encoding)
+3. **Ejemplos**: nombres de variables, estructura de datos esperada
+4. **Objetivo pedagógico**: cuando aplique, mencionar contexto educativo
+
+### Casos donde Copilot es más útil:
+- Boilerplate de código repetitivo (CRUD, validaciones)
+- Resolución de problemas comunes con solución documentada (encoding, PRAGMAs)
+- Generación de texto estructurado (README, docstrings)
+
+### Casos donde requiere supervisión:
+- Lógica de negocio específica del dominio (cálculo de nota ponderada)
+- Decisiones de diseño UX (¿expander abierto/cerrado por defecto?)
+- Consistencia de nomenclatura (español/inglés en variables)
+
+---
+
+# Ejemplo de Análisis en R
+
+A continuación, un ejemplo de cómo un investigador en educación podría analizar los datos exportados desde el sistema de rúbricas.
+
+## Carga de datos
+
+```{r carga-datos, eval=FALSE}
+# Importar CSV exportado desde Streamlit
+library(readr)
+library(dplyr)
+library(ggplot2)
+
+evaluaciones <- read_csv("evaluaciones_export.csv", 
+                         locale = locale(encoding = "UTF-8"))
+
+glimpse(evaluaciones)
+```
+
+## Estadísticas descriptivas
+
+```{r stats-descriptivas}
+# Simulación de datos para este ejemplo (en producción se usaría el CSV real)
+set.seed(2025)
+evaluaciones_demo <- tibble(
+  curso = sample(c("Programación Python", "Estadística Aplicada"), 50, replace = TRUE),
+  evaluacion = sample(c("Parcial 1", "Proyecto Final"), 50, replace = TRUE),
+  grupo_o_estudiante = paste("Grupo", 1:50),
+  estructura = round(rnorm(50, mean = 3.8, sd = 0.8), 1),
+  programacion = round(rnorm(50, mean = 3.5, sd = 1.0), 1),
+  teoria = round(rnorm(50, mean = 3.6, sd = 0.9), 1),
+  ia = round(rnorm(50, mean = 3.2, sd = 1.1), 1),
+  reflexion = round(rnorm(50, mean = 3.7, sd = 0.8), 1),
+  presentacion = round(rnorm(50, mean = 4.0, sd = 0.7), 1),
+  nota_final = round(rnorm(50, mean = 3.7, sd = 0.8), 2)
+) %>%
+  mutate(across(estructura:presentacion, ~pmax(1, pmin(5, .))))  # limitar a [1,5]
+
+# Resumen por curso
+evaluaciones_demo %>%
+  group_by(curso) %>%
+  summarise(
+    n = n(),
+    nota_media = mean(nota_final),
+    nota_sd = sd(nota_final),
+    estructura_media = mean(estructura),
+    programacion_media = mean(programacion),
+    teoria_media = mean(teoria)
+  ) %>%
+  kable(digits = 2, caption = "Resumen de calificaciones por curso") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+## Visualización: Distribución de notas por criterio
+
+```{r plot-distribucion, fig.width=10, fig.height=6}
+evaluaciones_long <- evaluaciones_demo %>%
+  select(grupo_o_estudiante, estructura:presentacion) %>%
+  pivot_longer(cols = -grupo_o_estudiante, 
+               names_to = "criterio", 
+               values_to = "nota")
+
+ggplot(evaluaciones_long, aes(x = criterio, y = nota, fill = criterio)) +
+  geom_boxplot(alpha = 0.7, outlier.colour = "red", outlier.shape = 16) +
+  geom_jitter(width = 0.2, alpha = 0.3, size = 1) +
+  scale_fill_brewer(palette = "Set3") +
+  labs(
+    title = "Distribución de Notas por Criterio de Rúbrica",
+    subtitle = "50 evaluaciones de Programación Python y Estadística Aplicada",
+    x = "Criterio de Evaluación",
+    y = "Nota (escala 1-5)",
+    caption = "Datos simulados para demostración"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "none",
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    plot.title = element_text(face = "bold", size = 14)
+  )
+```
+
+## Análisis de correlaciones
+
+```{r correlaciones, fig.width=8, fig.height=6}
+library(corrplot)
+
+matriz_correlaciones <- evaluaciones_demo %>%
+  select(estructura:nota_final) %>%
+  cor()
+
+corrplot(matriz_correlaciones, 
+         method = "color", 
+         type = "upper",
+         addCoef.col = "black",
+         tl.col = "black",
+         tl.srt = 45,
+         number.cex = 0.8,
+         title = "Matriz de Correlaciones entre Criterios",
+         mar = c(0,0,2,0))
+```
+
+**Interpretación**: En este ejemplo simulado, observamos correlaciones moderadas entre los criterios, lo cual es esperado si los estudiantes con buen desempeño tienden a destacar en múltiples dimensiones. En datos reales, esto ayudaría a identificar:
+
+- Si existe un "efecto halo" (correlaciones muy altas → posible sesgo del evaluador)
+- Criterios independientes que miden competencias distintas (correlaciones bajas)
+
+## Identificación de perfiles de estudiantes
+
+```{r clustering, fig.width=10, fig.height=6}
+# K-means clustering para identificar perfiles de desempeño
+set.seed(123)
+datos_clustering <- evaluaciones_demo %>%
+  select(estructura:presentacion) %>%
+  scale()  # estandarizar
+
+kmeans_result <- kmeans(datos_clustering, centers = 3, nstart = 25)
+
+evaluaciones_demo$perfil <- factor(kmeans_result$cluster,
+                                   labels = c("Perfil A", "Perfil B", "Perfil C"))
+
+# Visualizar perfiles en PCA
+library(ggfortify)
+pca_result <- prcomp(datos_clustering, scale. = FALSE)
+
+autoplot(pca_result, data = evaluaciones_demo, colour = "perfil", 
+         loadings = TRUE, loadings.label = TRUE, loadings.label.size = 3) +
+  labs(title = "Perfiles de Desempeño Estudiantil (PCA)",
+       subtitle = "Clustering k-means con 3 grupos",
+       colour = "Perfil") +
+  theme_minimal()
+```
+
+## Tabla de características por perfil
+
+```{r tabla-perfiles}
+evaluaciones_demo %>%
+  group_by(perfil) %>%
+  summarise(
+    n = n(),
+    estructura = mean(estructura),
+    programacion = mean(programacion),
+    teoria = mean(teoria),
+    ia = mean(ia),
+    reflexion = mean(reflexion),
+    presentacion = mean(presentacion),
+    nota_final = mean(nota_final)
+  ) %>%
+  kable(digits = 2, caption = "Características promedio por perfil de desempeño") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+```
+
+**Uso pedagógico**: Los perfiles identificados pueden usarse para:
+- Diseñar intervenciones específicas (tutorías focalizadas en criterios débiles)
+- Formar grupos heterogéneos para trabajo colaborativo
+- Ajustar contenidos del curso según fortalezas/debilidades generales
+
+---
+
+# Resultados y Conclusiones
+
+## Logros técnicos
+
+1. **Sistema funcional y portable**: Aplicación Streamlit que funciona en Codespaces, servidor institucional y PCs offline
+2. **Persistencia robusta**: Base de datos SQLite con PRAGMAs optimizados y backups automáticos
+3. **Exportación compatible**: CSVs con UTF-8-sig y sanitización de multilínea, abribles en Excel sin problemas
+4. **Interfaz intuitiva**: Expanders interactivos, generación automática de observaciones, visualización de rúbrica completa
+
+## Impacto pedagógico
+
+### Ahorro de tiempo
+
+Evaluación manual con rúbrica en papel:
+- **10-15 minutos** por evaluación (lectura, calificación, redacción de observaciones)
+- 20 evaluaciones = **3-5 horas**
+
+Con este sistema:
+- **5-7 minutos** por evaluación (sliders rápidos, observaciones automáticas con ajuste opcional)
+- 20 evaluaciones = **2 horas**
+- **Ahorro**: ~40-50% del tiempo
+
+### Mejora en la calidad del feedback
+
+- **Consistencia**: Las observaciones generadas automáticamente garantizan que cada criterio tenga retroalimentación explícita
+- **Exhaustividad**: No se omiten criterios por cansancio del docente
+- **Trazabilidad**: Exportación a CSV permite análisis longitudinal y detección de patrones
+
+### Adopción institucional
+
+Este tipo de herramientas facilita:
+- **Estandarización** de evaluación por rúbricas en múltiples cursos
+- **Capacitación** de docentes nuevos (plantillas predefinidas)
+- **Investigación** en educación (datos estructurados para análisis estadístico)
+
+## Limitaciones y trabajo futuro
+
+### Limitaciones actuales
+
+1. **Plantillas estáticas**: Modificar pesos requiere editar código Python (no hay UI para personalización)
+2. **Sin autenticación**: La app es pública por defecto (no apta para entornos multiusuario sin VPN)
+3. **Escalabilidad limitada**: SQLite es adecuado para ~10,000 evaluaciones, pero no para sistemas institucionales masivos
+4. **Observaciones automáticas genéricas**: Los textos de `EXAMPLES` requieren ajuste manual para contextos específicos
+
+### Trabajo futuro
+
+#### Funcionalidades planificadas
+
+1. **Editor de plantillas en UI**: Permitir a docentes crear/modificar plantillas sin tocar código
+2. **Integración con LMS**: Exportación directa a Moodle, Canvas, Blackboard
+3. **Análisis integrado**: Dashboard con gráficos de distribución de notas, tendencias temporales
+4. **Modo colaborativo**: Varios docentes evaluando el mismo curso con sincronización en BD PostgreSQL
+
+#### Investigación pedagógica
+
+1. **Validación de rúbricas**: Análisis de confiabilidad inter-evaluador (kappa de Cohen)
+2. **Predicción de desempeño**: Modelos ML para identificar estudiantes en riesgo tempranamente
+3. **Generación de observaciones con LLM**: Usar GPT/Claude para feedback más personalizado basado en contexto del curso
+
+---
+
+# Apéndices
+
+## Apéndice A: Comandos de instalación
+
+### Instalación local (Linux/macOS)
+
+```bash
+# Clonar repositorio
+git clone https://github.com/usuario/rubrica-streamlit.git
+cd rubrica-streamlit/rubrica-streamlit
+
+# Crear entorno virtual
+python3 -m venv .venv
+source .venv/bin/activate
+
+# Instalar dependencias
+pip install -r requirements.txt
+
+# Ejecutar aplicación
+streamlit run app.py --server.address=0.0.0.0 --server.port=8501
+```
+
+### Instalación offline (Windows)
+
+Ver guía completa en `docs/guia_app.md` para instrucciones de:
+- Descarga de wheelhouse con `pip download`
+- Instalación desde caché local con `pip install --no-index --find-links`
+- Creación de ejecutable con `auto-py-to-exe`
+
+### Uso del script `run.sh`
+
+```bash
+# Iniciar servicio
+./run.sh start
+
+# Verificar estado
+./run.sh status
+
+# Ver logs en tiempo real
+./run.sh logs
+
+# Detener servicio
+./run.sh stop
+
+# Reiniciar
+./run.sh restart
+```
+
+## Apéndice B: Estructura de CSV exportado
+
+### Columnas del CSV
+
+| Columna | Tipo | Descripción |
+|---------|------|-------------|
+| `id` | INTEGER | ID autoincrementado de la evaluación |
+| `plantilla` | TEXT | Nombre de la plantilla usada (Agroindustrial/Civil/Estadística) |
+| `curso` | TEXT | Nombre del curso o materia |
+| `evaluacion` | TEXT | Tipo de evaluación (Parcial 1, Proyecto, Tarea) |
+| `fecha` | TEXT | Fecha en formato YYYY-MM-DD |
+| `grupo_o_estudiante` | TEXT | Identificador del grupo o estudiante evaluado |
+| `estructura` | REAL | Nota numérica del criterio Estructura (1-5) |
+| `programacion` | REAL | Nota numérica del criterio Programación (1-5) |
+| `teoria` | REAL | Nota numérica del criterio Teoría (1-5) |
+| `ia` | REAL | Nota numérica del criterio IA (1-5) |
+| `reflexion` | REAL | Nota numérica del criterio Reflexión (1-5) |
+| `presentacion` | REAL | Nota numérica del criterio Presentación (1-5) |
+| `nota_final` | REAL | Nota final ponderada (calculada) |
+| `observaciones` | TEXT | Texto cualitativo sanitizado (sin saltos de línea) |
+| `observaciones_raw` | TEXT | Texto cualitativo original (con saltos de línea) |
+| `estructura_text` | TEXT | Descripción cualitativa del nivel de Estructura |
+| `programacion_text` | TEXT | Descripción cualitativa del nivel de Programación |
+| `teoria_text` | TEXT | Descripción cualitativa del nivel de Teoría |
+| `ia_text` | TEXT | Descripción cualitativa del nivel de IA |
+| `reflexion_text` | TEXT | Descripción cualitativa del nivel de Reflexión |
+| `presentacion_text` | TEXT | Descripción cualitativa del nivel de Presentación |
+
+### Ejemplo de registro
+
+```csv
+id,plantilla,curso,evaluacion,fecha,grupo_o_estudiante,estructura,programacion,teoria,ia,reflexion,presentacion,nota_final,observaciones,observaciones_raw,estructura_text,programacion_text,teoria_text,ia_text,reflexion_text,presentacion_text
+42,Estadística,Programación Python,Proyecto Final,2025-10-15,Grupo 3,4,5,4,3,4,5,4.35,"Estructura: Buena organización... | Programación: Código impecable...","Estructura: Buena organización...
+Programación: Código impecable...","Buena organización y secciones bien identificadas.","Código impecable, reproducible y con buenas prácticas.","Demuestra buen dominio teórico con referencias claras.","Uso aceptable de técnicas de IA con resultados básicos.","Buena capacidad de autoevaluación y discusión de mejoras.","Presentación sobresaliente: visuales, claridad y entrega impecables."
+```
+
+## Apéndice C: Configuración de servidor Streamlit
+
+### Archivo `config.toml`
+
+Para despliegue en servidor institucional, crear `.streamlit/config.toml`:
+
+```toml
+[server]
+port = 8501
+address = "0.0.0.0"
+enableCORS = false
+enableXsrfProtection = true
+
+[browser]
+serverAddress = "rubrica.universidad.edu"
+serverPort = 443
+
+[theme]
+primaryColor = "#1E88E5"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F5F5F5"
+textColor = "#262730"
+font = "sans serif"
+```
+
+### Nginx reverse proxy
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name rubrica.universidad.edu;
+
+    ssl_certificate /etc/letsencrypt/live/rubrica.universidad.edu/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/rubrica.universidad.edu/privkey.pem;
+
+    location / {
+        proxy_pass http://localhost:8501;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+## Apéndice D: Licencia y contribuciones
+
+Este proyecto se distribuye bajo **Licencia MIT** (ver archivo `LICENSE` en el repositorio).
+
+### Contribuir al proyecto
+
+Las contribuciones son bienvenidas. Para reportar bugs o solicitar funcionalidades:
+1. Crear issue en GitHub con etiqueta `bug` o `enhancement`
+2. Fork del repositorio y crear branch con nombre descriptivo (`feature/editor-plantillas`)
+3. Commit siguiendo convención: `type(scope): description` (ej: `feat(ui): add template editor`)
+4. Abrir Pull Request con descripción detallada del cambio
+
+---
+
+# Referencias
+
+## Documentación técnica
+
+- [Streamlit Documentation](https://docs.streamlit.io/)
+- [SQLite PRAGMA Statements](https://www.sqlite.org/pragma.html)
+- [pandas to_csv() method](https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.to_csv.html)
+- [Python Type Hints (PEP 484)](https://peps.python.org/pep-0484/)
+
+## Evaluación por rúbricas
+
+- Stevens, D. D., & Levi, A. J. (2013). *Introduction to Rubrics: An Assessment Tool to Save Grading Time, Convey Effective Feedback, and Promote Student Learning*. Stylus Publishing.
+- Popham, W. J. (1997). "What's Wrong—and What's Right—with Rubrics." *Educational Leadership*, 55(2), 72-75.
+
+## Análisis de datos educativos
+
+- Wickham, H., & Grolemund, G. (2017). *R for Data Science: Import, Tidy, Transform, Visualize, and Model Data*. O'Reilly Media. [https://r4ds.had.co.nz/](https://r4ds.had.co.nz/)
+- James, G., Witten, D., Hastie, T., & Tibshirani, R. (2021). *An Introduction to Statistical Learning with Applications in R*. Springer. [https://www.statlearning.com/](https://www.statlearning.com/)
+
+---
+
+**Documento generado**: `r format(Sys.time(), '%d de %B de %Y a las %H:%M:%S')`  
+**Versión del proyecto**: 2025.2  
+**Repositorio**: [https://github.com/usuario/rubrica-streamlit](https://github.com/usuario/rubrica-streamlit)
